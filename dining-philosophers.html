@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dining Philosophers: deadlock and solutions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#eaf0f7; --surface:#ffffff; --ink:#12243a; --muted:#546a82; --line:#cfdae6;
+  --accent:#0a6fc2; --accent-ink:#ffffff;
+  --think:#8fa8c0; --hungry:#e0a21a; --hold:#e9742b; --eat:#1f9d62; --dead:#d1342a;
+  --table:#f8d9bd; --plate:#fde047; --bowl:#2a6fdb; --fork:#3b4f66;
+  --code-bg:#0f1c2d; --code-ink:#dbe7f5;
+  --head:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b1522; --surface:#122238; --ink:#e4edf7; --muted:#8ea5bd; --line:#27405d;
+    --accent:#4aa3f0; --accent-ink:#06121f;
+    --think:#6c87a3; --hungry:#f0b232; --hold:#f28a47; --eat:#3cc283; --dead:#ff6b5e;
+    --table:#5a4638; --plate:#e8c93a; --bowl:#3f86f0; --fork:#b9c9db;
+    --code-bg:#08111d;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0b1522; --surface:#122238; --ink:#e4edf7; --muted:#8ea5bd; --line:#27405d;
+  --accent:#4aa3f0; --accent-ink:#06121f;
+  --think:#6c87a3; --hungry:#f0b232; --hold:#f28a47; --eat:#3cc283; --dead:#ff6b5e;
+  --table:#5a4638; --plate:#e8c93a; --bowl:#3f86f0; --fork:#b9c9db;
+  --code-bg:#08111d;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:400 16px/1.55 var(--body)}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 56px}
+h1{font:700 clamp(28px,4.6vw,46px)/1.05 var(--head);margin:0 0 8px;letter-spacing:-.02em}
+.lede{max-width:62ch;color:var(--muted);margin:0 0 24px}
+.modes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+.modes label{cursor:pointer}
+.modes input{position:absolute;opacity:0;pointer-events:none}
+.modes span{display:block;padding:9px 16px;border:1.5px solid var(--line);border-radius:999px;background:var(--surface);font-weight:500;font-size:15px}
+.modes input:checked + span{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.modes input:focus-visible + span{outline:3px solid var(--accent);outline-offset:2px}
+.grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px}
+.stage{padding:10px;position:relative}
+svg{display:block;width:100%;height:auto;max-height:76vh}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
+button{font:500 14px var(--body);color:var(--ink);background:var(--surface);border:1.5px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input[type=range]:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.speed{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);margin-left:auto}
+.speed input{accent-color:var(--accent);width:110px}
+#banner{margin:0 0 16px;padding:14px 16px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);font-size:15px}
+#banner b{font-family:var(--head);font-size:18px;display:block;margin-bottom:2px}
+#banner.dead{border-color:var(--dead);background:color-mix(in srgb,var(--dead) 12%,var(--surface))}
+#banner.ok{border-color:var(--eat);background:color-mix(in srgb,var(--eat) 11%,var(--surface))}
+h2{font:700 20px/1.2 var(--head);margin:0 0 10px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}
+th{font-weight:600;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:baseline}
+.bar{height:8px;border-radius:4px;background:var(--eat);min-width:2px;transition:width .2s}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted);margin-top:12px}
+#log{list-style:none;margin:0;padding:0;font:400 13px/1.7 var(--mono);color:var(--muted);min-height:9.2em}
+#log li:first-child{color:var(--ink)}
+.how p{margin:0 0 8px}
+.how .tag{font-weight:600}
+.stack{display:grid;gap:18px}
+.code{margin-top:24px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;align-items:center}
+.tabs button[aria-selected=true]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.tabs .copy{margin-left:auto}
+pre{margin:0;background:var(--code-bg);color:var(--code-ink);padding:16px;border-radius:10px;overflow-x:auto;font:400 13px/1.55 var(--mono);max-width:100%}
+.note{font-size:14px;color:var(--muted);margin:12px 0 0}
+/* svg */
+.ph circle.body{stroke:var(--surface);stroke-width:4;transition:fill .2s}
+.ph.think circle.body{fill:var(--think)} .ph.hungry circle.body{fill:var(--hungry)}
+.ph.hold circle.body{fill:var(--hold)} .ph.eat circle.body{fill:var(--eat)} .ph.dead circle.body{fill:var(--dead)}
+.ph text{fill:#fff;text-anchor:middle;font-family:var(--head)}
+.ph .num{font-size:20px;font-weight:700} .ph .st{font-size:10px;font-family:var(--body);font-weight:600}
+.ph.hungry text{fill:#2a1c00}
+.fork{transition:transform .35s ease}
+.fork *{stroke:var(--fork);stroke-width:3.5;stroke-linecap:round;fill:none;transition:stroke .2s}
+.fork.held *{stroke:var(--hold)} .fork.dead *{stroke:var(--dead)}
+.plate{fill:var(--plate);transition:fill .2s;stroke:#0000001a}
+.plate.eating{fill:#c9852a}
+@media (prefers-reduced-motion:reduce){.fork,.bar{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Dining philosophers</h1>
+  <p class="lede">Five philosophers, five forks, and each philosopher needs two forks to eat. Run the naive rule and watch the table freeze, then switch to a fix and run the same table again.</p>
+
+  <div class="modes" role="radiogroup" aria-label="Fork-taking strategy" id="modes">
+    <label><input type="radio" name="mode" value="naive" checked><span>Naive: right fork, then left</span></label>
+    <label><input type="radio" name="mode" value="hier"><span>Fix 1: fork ordering</span></label>
+    <label><input type="radio" name="mode" value="waiter"><span>Fix 2: waiter (max 4 seated)</span></label>
+  </div>
+
+  <div id="banner" role="status" aria-live="polite"></div>
+
+  <div class="grid">
+    <div>
+      <div class="card stage">
+        <svg viewBox="-260 -260 520 520" role="img" aria-label="Five philosophers around a circular table with five forks" id="svg"></svg>
+      </div>
+      <div class="controls">
+        <button class="primary" id="btnRun">Pause</button>
+        <button id="btnStep">Step</button>
+        <button id="btnReset">Reset</button>
+        <button id="btnAll" title="Every philosopher gets hungry in the same tick">Everyone hungry at once</button>
+        <label class="speed">Speed <input type="range" id="speed" min="1" max="6" value="3" aria-label="Simulation speed"></label>
+      </div>
+      <div class="legend" aria-hidden="true">
+        <span><i class="dot" style="background:var(--think)"></i>thinking</span>
+        <span><i class="dot" style="background:var(--hungry)"></i>hungry, no fork yet</span>
+        <span><i class="dot" style="background:var(--hold)"></i>holds one fork, wants the other</span>
+        <span><i class="dot" style="background:var(--eat)"></i>eating</span>
+        <span><i class="dot" style="background:var(--dead)"></i>deadlocked</span>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card how" id="how"></div>
+      <div class="card">
+        <h2>Table state</h2>
+        <table>
+          <thead><tr><th>Philosopher</th><th>State</th><th>Forks</th><th style="width:28%">Meals</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2>Event log</h2>
+        <ul id="log"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card code">
+    <h2>Java code</h2>
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-k="naive" aria-selected="true">Naive (deadlocks)</button>
+      <button role="tab" data-k="hier" aria-selected="false">Fork ordering</button>
+      <button role="tab" data-k="waiter" aria-selected="false">Waiter / Semaphore</button>
+      <button class="copy" id="copy">Copy code</button>
+    </div>
+    <pre><code id="code"></code></pre>
+    <p class="note">Each file compiles on its own: <span style="font-family:var(--mono)">javac X.java &amp;&amp; java X</span>. The naive version hangs after a few rounds; the other two run forever.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var N = 5, HOLD_DELAY = 6;
+var MODES = {
+  naive:{
+    title:"Naive rule",
+    html:"<h2>What the rule says</h2><p>Every philosopher picks up the fork on his <span class='tag'>right</span>, then the one on his <span class='tag'>left</span>, and only eats when he has both.</p><p>If all five pick up their right fork at nearly the same moment, each one waits for a fork that his neighbour is holding. Nobody ever puts a fork down, so the table is stuck for good.</p><p><span class='tag'>Why it happens:</span> all four deadlock conditions hold: mutual exclusion, hold and wait, no pre-emption, and a circular wait.</p>"
+  },
+  hier:{
+    title:"Fork ordering",
+    html:"<h2>What changes</h2><p>Forks are numbered 0 to 4. Every philosopher picks up the <span class='tag'>lower-numbered fork first</span>. Four philosophers still go right, then left; Philosopher 0 goes fork 0 first, then fork 4 (and Philosopher 1 goes 0 then 1).</p><p><span class='tag'>Why it works:</span> it breaks the circular wait. Someone always gets both forks, because the wait chain can only run towards higher fork numbers and has to end.</p>"
+  },
+  waiter:{
+    title:"Waiter",
+    html:"<h2>What changes</h2><p>A waiter lets at most <span class='tag'>four</span> philosophers sit and reach for forks at once (a counting semaphore with 4 permits). Forks are still taken right, then left.</p><p><span class='tag'>Why it works:</span> with five forks and only four hands reaching, at least one philosopher can always grab a second fork, eat, and release. Hold and wait can still happen, but never as a full circle.</p>"
+  }
+};
+
+var CODE = {
+naive:
+"public class NaiveDining {\n"+
+"    static final int N = 5;\n"+
+"    static final Object[] fork = new Object[N];\n"+
+"\n"+
+"    public static void main(String[] args) {\n"+
+"        for (int i = 0; i < N; i++) fork[i] = new Object();\n"+
+"        for (int i = 0; i < N; i++) {\n"+
+"            final int id = i;\n"+
+"            new Thread(() -> run(id), \"Philosopher-\" + id).start();\n"+
+"        }\n"+
+"    }\n"+
+"\n"+
+"    static void run(int id) {\n"+
+"        Object right = fork[id];\n"+
+"        Object left  = fork[(id + N - 1) % N];\n"+
+"        try {\n"+
+"            while (true) {\n"+
+"                log(id, \"thinking\");\n"+
+"                Thread.sleep((long) (Math.random() * 100));\n"+
+"\n"+
+"                synchronized (right) {              // 1. pick up right fork\n"+
+"                    log(id, \"has right fork\");\n"+
+"                    Thread.sleep(50);               //    widens the race window\n"+
+"                    synchronized (left) {           // 2. wait for left fork -> DEADLOCK\n"+
+"                        log(id, \"EATING\");\n"+
+"                        Thread.sleep((long) (Math.random() * 100));\n"+
+"                    }\n"+
+"                }\n"+
+"            }\n"+
+"        } catch (InterruptedException e) {\n"+
+"            Thread.currentThread().interrupt();\n"+
+"        }\n"+
+"    }\n"+
+"\n"+
+"    static void log(int id, String msg) {\n"+
+"        System.out.println(\"Philosopher \" + id + \" \" + msg);\n"+
+"    }\n"+
+"}\n",
+
+hier:
+"public class OrderedDining {\n"+
+"    static final int N = 5;\n"+
+"    static final Object[] fork = new Object[N];\n"+
+"\n"+
+"    public static void main(String[] args) {\n"+
+"        for (int i = 0; i < N; i++) fork[i] = new Object();\n"+
+"        for (int i = 0; i < N; i++) {\n"+
+"            final int id = i;\n"+
+"            new Thread(() -> run(id), \"Philosopher-\" + id).start();\n"+
+"        }\n"+
+"    }\n"+
+"\n"+
+"    static void run(int id) {\n"+
+"        int a = id, b = (id + N - 1) % N;\n"+
+"        // Always lock the LOWER-numbered fork first: no circular wait possible\n"+
+"        Object first  = fork[Math.min(a, b)];\n"+
+"        Object second = fork[Math.max(a, b)];\n"+
+"        try {\n"+
+"            while (true) {\n"+
+"                log(id, \"thinking\");\n"+
+"                Thread.sleep((long) (Math.random() * 100));\n"+
+"\n"+
+"                synchronized (first) {\n"+
+"                    log(id, \"has first fork\");\n"+
+"                    Thread.sleep(50);\n"+
+"                    synchronized (second) {\n"+
+"                        log(id, \"EATING\");\n"+
+"                        Thread.sleep((long) (Math.random() * 100));\n"+
+"                    }\n"+
+"                }\n"+
+"            }\n"+
+"        } catch (InterruptedException e) {\n"+
+"            Thread.currentThread().interrupt();\n"+
+"        }\n"+
+"    }\n"+
+"\n"+
+"    static void log(int id, String msg) {\n"+
+"        System.out.println(\"Philosopher \" + id + \" \" + msg);\n"+
+"    }\n"+
+"}\n",
+
+waiter:
+"import java.util.concurrent.Semaphore;\n"+
+"\n"+
+"public class WaiterDining {\n"+
+"    static final int N = 5;\n"+
+"    static final Object[] fork = new Object[N];\n"+
+"    // The waiter: at most N-1 philosophers may reach for forks at once.\n"+
+"    // 'true' = fair, so no philosopher is overtaken forever (no starvation).\n"+
+"    static final Semaphore waiter = new Semaphore(N - 1, true);\n"+
+"\n"+
+"    public static void main(String[] args) {\n"+
+"        for (int i = 0; i < N; i++) fork[i] = new Object();\n"+
+"        for (int i = 0; i < N; i++) {\n"+
+"            final int id = i;\n"+
+"            new Thread(() -> run(id), \"Philosopher-\" + id).start();\n"+
+"        }\n"+
+"    }\n"+
+"\n"+
+"    static void run(int id) {\n"+
+"        Object right = fork[id];\n"+
+"        Object left  = fork[(id + N - 1) % N];\n"+
+"        try {\n"+
+"            while (true) {\n"+
+"                log(id, \"thinking\");\n"+
+"                Thread.sleep((long) (Math.random() * 100));\n"+
+"\n"+
+"                waiter.acquire();                   // ask the waiter for a seat\n"+
+"                try {\n"+
+"                    synchronized (right) {\n"+
+"                        log(id, \"has right fork\");\n"+
+"                        Thread.sleep(50);\n"+
+"                        synchronized (left) {\n"+
+"                            log(id, \"EATING\");\n"+
+"                            Thread.sleep((long) (Math.random() * 100));\n"+
+"                        }\n"+
+"                    }\n"+
+"                } finally {\n"+
+"                    waiter.release();               // always give the seat back\n"+
+"                }\n"+
+"            }\n"+
+"        } catch (InterruptedException e) {\n"+
+"            Thread.currentThread().interrupt();\n"+
+"        }\n"+
+"    }\n"+
+"\n"+
+"    static void log(int id, String msg) {\n"+
+"        System.out.println(\"Philosopher \" + id + \" \" + msg);\n"+
+"    }\n"+
+"}\n"
+};
+
+/* ---------- state ---------- */
+var mode = "naive", running = true, tick = 0, timer = null;
+var ph, owner, seats, meals, dead, logs, grabbedAt;
+
+function rnd(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+function order(i){
+  var r = i, l = (i+N-1)%N;
+  if(mode==="hier") return r<l ? [r,l] : [l,r];
+  return [r,l];
+}
+function reset(){
+  ph = []; for(var i=0;i<N;i++) ph.push({s:"think",t:rnd(4,30),seat:false});
+  owner = [-1,-1,-1,-1,-1]; meals=[0,0,0,0,0]; seats=0; dead=false; tick=0; logs=[];
+  render();
+}
+function addLog(msg){ logs.unshift("t"+String(tick).padStart(3,"0")+"  "+msg); if(logs.length>8) logs.pop(); }
+
+function step(){
+  if(dead) return;
+  tick++;
+  for(var k=0;k<N;k++){
+    var i = (k+tick)%N, p = ph[i], f = order(i), a=f[0], b=f[1];
+    if(p.s==="think"){
+      if(--p.t<=0){ p.s="hungry"; addLog("P"+i+" gets hungry"); }
+    } else if(p.s==="hungry"){
+      if(mode==="waiter" && !p.seat){
+        if(seats < N-1){ seats++; p.seat=true; addLog("waiter seats P"+i+" ("+seats+"/4)"); }
+        else continue;
+      }
+      if(owner[a]===-1){ owner[a]=i; p.s="hold"; p.t=HOLD_DELAY; addLog("P"+i+" takes fork "+a); }
+    } else if(p.s==="hold"){
+      if(p.t>0){ p.t--; continue; }
+      if(owner[b]===-1){ owner[b]=i; p.s="eat"; p.t=rnd(12,24); addLog("P"+i+" takes fork "+b+" and eats"); }
+    } else if(p.s==="eat"){
+      if(--p.t<=0){
+        owner[a]=-1; owner[b]=-1; meals[i]++; p.s="think"; p.t=rnd(10,35);
+        if(p.seat){ p.seat=false; seats--; }
+        addLog("P"+i+" puts down forks "+a+", "+b);
+      }
+    }
+  }
+  var stuck = true;
+  for(var j=0;j<N;j++){
+    var q = ph[j], o = order(j)[1];
+    if(!(q.s==="hold" && q.t<=0 && owner[o]!==-1)){ stuck=false; break; }
+  }
+  if(stuck){ dead=true; addLog("DEADLOCK: every philosopher waits on a neighbour"); }
+  render();
+}
+
+/* ---------- svg ---------- */
+var NS = "http://www.w3.org/2000/svg", svg = document.getElementById("svg");
+function el(tag, attrs, parent){
+  var e = document.createElementNS(NS, tag);
+  for(var k in attrs) e.setAttribute(k, attrs[k]);
+  (parent||svg).appendChild(e); return e;
+}
+var thetas = [], plates = [], phEls = [], forkEls = [];
+function pol(r, deg){ var a = deg*Math.PI/180; return [r*Math.cos(a), r*Math.sin(a)]; }
+
+(function build(){
+  el("circle",{cx:0,cy:0,r:160,fill:"var(--table)"});
+  el("circle",{cx:0,cy:0,r:48,fill:"var(--bowl)"});
+  el("path",{d:"M-24 -4c10-22 24-22 30-6s-18 28-26 12 16-34 28-16-6 26-18 22",fill:"none",stroke:"#e0a030","stroke-width":4,"stroke-linecap":"round"});
+  el("path",{d:"M-8 14c8 8 22 4 22-8s-14-16-24-8",fill:"none",stroke:"#e0a030","stroke-width":3.5,"stroke-linecap":"round"});
+  for(var i=0;i<N;i++){
+    var th = 90 - 72*i; thetas.push(th);
+    var pp = pol(112, th);
+    plates.push(el("circle",{cx:pp[0],cy:pp[1],r:30,"class":"plate"}));
+  }
+  for(i=0;i<N;i++){
+    var g = el("g",{"class":"fork"});
+    el("line",{x1:68,y1:0,x2:130,y2:0},g);
+    el("line",{x1:130,y1:-8,x2:130,y2:8},g);
+    el("line",{x1:130,y1:-8,x2:152,y2:-8},g);
+    el("line",{x1:130,y1:0,x2:152,y2:0},g);
+    el("line",{x1:130,y1:8,x2:152,y2:8},g);
+    forkEls.push(g);
+  }
+  for(i=0;i<N;i++){
+    var q = pol(212, thetas[i]);
+    var gg = el("g",{"class":"ph think"});
+    el("circle",{"class":"body",cx:q[0],cy:q[1],r:34},gg);
+    var n = el("text",{"class":"num",x:q[0],y:q[1]+2},gg); n.textContent = i;
+    var s = el("text",{"class":"st",x:q[0],y:q[1]+19},gg);
+    phEls.push({g:gg,st:s});
+  }
+})();
+
+var LABEL = {think:"thinking",hungry:"hungry",hold:"1 fork",eat:"eating"};
+var TEXT  = {think:"Thinking",hungry:"Hungry, waiting",hold:"Has one fork, waits",eat:"Eating"};
+var COLOR = {think:"var(--think)",hungry:"var(--hungry)",hold:"var(--hold)",eat:"var(--eat)",dead:"var(--dead)"};
+
+function render(){
+  for(var i=0;i<N;i++){
+    var p = ph[i], cls = dead ? "dead" : p.s;
+    phEls[i].g.setAttribute("class","ph "+cls);
+    phEls[i].st.textContent = dead ? "stuck" : LABEL[p.s];
+    plates[i].setAttribute("class","plate"+(p.s==="eat"?" eating":""));
+  }
+  for(var f=0;f<N;f++){
+    var base = thetas[f] - 36, g = forkEls[f], o = owner[f], ang = base, c = "fork";
+    if(o !== -1){
+      ang = thetas[o] + (f===o ? -14 : 14);
+      c += dead ? " dead" : " held";
+    }
+    g.setAttribute("class", c);
+    g.style.transform = "rotate("+ang+"deg)";
+  }
+  /* table */
+  var rows = document.getElementById("rows"), h = "", max = Math.max.apply(null, meals.concat([3]));
+  for(i=0;i<N;i++){
+    var held = []; for(var k=0;k<N;k++) if(owner[k]===i) held.push(k);
+    var sc = dead ? "dead" : ph[i].s;
+    h += "<tr><td>Philosopher "+i+"</td><td><i class='dot' style='background:"+COLOR[sc]+"'></i>"+(dead?"Deadlocked":TEXT[ph[i].s])+"</td><td>"+(held.length?held.join(", "):"none")+"</td><td><div class='bar' style='width:"+(meals[i]/max*100)+"%'></div>"+meals[i]+"</td></tr>";
+  }
+  rows.innerHTML = h;
+  var ul = document.getElementById("log"); ul.innerHTML = "";
+  logs.forEach(function(m){ var li = document.createElement("li"); li.textContent = m; ul.appendChild(li); });
+  /* banner */
+  var b = document.getElementById("banner"), total = meals.reduce(function(a,c){return a+c;},0);
+  if(dead){
+    b.className="dead";
+    b.innerHTML="<b>Deadlock at tick "+tick+"</b>All five philosophers hold one fork and wait for the fork their neighbour is holding. Nobody can eat and nobody will put a fork down. Press Reset, or switch to a fix and try the same table.";
+  } else if(mode==="naive"){
+    b.className=""; b.innerHTML="<b>Running the naive rule</b>Deadlock is a matter of timing, so it can take a few rounds to show up. Press &ldquo;Everyone hungry at once&rdquo; to make it happen immediately. Meals so far: "+total+".";
+  } else {
+    b.className="ok"; b.innerHTML="<b>"+MODES[mode].title+": no deadlock</b>Tick "+tick+", "+total+" meals eaten. Try &ldquo;Everyone hungry at once&rdquo;, the exact situation that froze the naive table.";
+  }
+}
+
+/* ---------- controls ---------- */
+function schedule(){
+  clearInterval(timer);
+  if(!running) return;
+  var sp = +document.getElementById("speed").value;
+  timer = setInterval(step, 520 - sp*80);
+}
+function setRun(r){
+  running = r; document.getElementById("btnRun").textContent = r ? "Pause" : "Run";
+  schedule();
+}
+document.getElementById("btnRun").onclick = function(){ setRun(!running); };
+document.getElementById("btnStep").onclick = function(){ setRun(false); step(); };
+document.getElementById("btnReset").onclick = function(){ reset(); setRun(true); };
+document.getElementById("btnAll").onclick = function(){
+  if(dead) reset();
+  for(var i=0;i<N;i++){ if(ph[i].seat){ ph[i].seat=false; seats--; } }
+  owner = [-1,-1,-1,-1,-1]; seats = 0;
+  for(i=0;i<N;i++){ ph[i].s="hungry"; ph[i].t=0; ph[i].seat=false; }
+  addLog("everyone is hungry at the same moment");
+  render(); setRun(true);
+};
+document.getElementById("speed").oninput = schedule;
+document.getElementById("modes").addEventListener("change", function(e){
+  mode = e.target.value; reset(); showHow(); setRun(true);
+  selectTab(mode);
+});
+function showHow(){ document.getElementById("how").innerHTML = MODES[mode].html; }
+
+/* code tabs */
+var codeEl = document.getElementById("code"), tabs = document.querySelectorAll("#tabs [role=tab]");
+function selectTab(k){
+  tabs.forEach(function(t){ t.setAttribute("aria-selected", t.dataset.k===k ? "true":"false"); });
+  codeEl.textContent = CODE[k]; codeEl.dataset.k = k;
+}
+tabs.forEach(function(t){ t.onclick = function(){ selectTab(t.dataset.k); }; });
+document.getElementById("copy").onclick = function(){
+  var btn = this, txt = codeEl.textContent;
+  function done(){ btn.textContent="Copied"; setTimeout(function(){ btn.textContent="Copy code"; },1400); }
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done, fallback); }
+    else fallback();
+  }catch(e){ fallback(); }
+  function fallback(){
+    var r = document.createRange(); r.selectNodeContents(codeEl);
+    var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    btn.textContent="Selected: press Ctrl+C"; setTimeout(function(){ btn.textContent="Copy code"; },2200);
+  }
+};
+
+reset(); showHow(); selectTab("naive"); schedule();
+})();
+</script>
+</body>
+</html>
